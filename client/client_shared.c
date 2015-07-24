@@ -20,13 +20,7 @@ Contributors:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef WIN32
 #include <unistd.h>
-#else
-#include <process.h>
-#include <winsock2.h>
-#define snprintf sprintf_s
-#endif
 
 #include <mosquitto.h>
 #include "client_shared.h"
@@ -59,18 +53,6 @@ void client_config_cleanup(struct mosq_config *cfg)
 	if(cfg->password) free(cfg->password);
 	if(cfg->will_topic) free(cfg->will_topic);
 	if(cfg->will_payload) free(cfg->will_payload);
-#ifdef WITH_TLS
-	if(cfg->cafile) free(cfg->cafile);
-	if(cfg->capath) free(cfg->capath);
-	if(cfg->certfile) free(cfg->certfile);
-	if(cfg->keyfile) free(cfg->keyfile);
-	if(cfg->ciphers) free(cfg->ciphers);
-	if(cfg->tls_version) free(cfg->tls_version);
-#  ifdef WITH_TLS_PSK
-	if(cfg->psk) free(cfg->psk);
-	if(cfg->psk_identity) free(cfg->psk_identity);
-#  endif
-#endif
 	if(cfg->topics){
 		for(i=0; i<cfg->topic_count; i++){
 			free(cfg->topics[i]);
@@ -100,17 +82,12 @@ int client_config_load(struct mosq_config *cfg, int pub_or_sub, int argc, char *
 	int len;
 	char *args[3];
 
-#ifndef WIN32
 	char *env;
-#else
-	char env[1024];
-#endif
 	args[0] = NULL;
 
 	init_config(cfg);
 
 	/* Default config file */
-#ifndef WIN32
 	env = getenv("XDG_CONFIG_HOME");
 	if(env){
 		len = strlen(env) + strlen("/mosquitto_pub") + 1;
@@ -137,21 +114,6 @@ int client_config_load(struct mosq_config *cfg, int pub_or_sub, int argc, char *
 		}
 	}
 
-#else
-	rc = GetEnvironmentVariable("USERPROFILE", env, 1024);
-	if(rc > 0 && rc < 1024){
-		len = strlen(env) + strlen("\\mosquitto_pub.conf") + 1;
-		loc = malloc(len);
-		if(pub_or_sub == CLIENT_PUB){
-			snprintf(loc, len, "%s\\mosquitto_pub.conf", env);
-		}else{
-			snprintf(loc, len, "%s\\mosquitto_sub.conf", env);
-		}
-		loc[len-1] = '\0';
-	}else{
-		fprintf(stderr, "Warning: Unable to locate configuration directory, default config not loaded.\n");
-	}
-#endif
 
 	if(loc){
 		fptr = fopen(loc, "rt");
@@ -200,22 +162,6 @@ int client_config_load(struct mosq_config *cfg, int pub_or_sub, int argc, char *
 	if(cfg->password && !cfg->username){
 		if(!cfg->quiet) fprintf(stderr, "Warning: Not using password since username not set.\n");
 	}
-#ifdef WITH_TLS
-	if((cfg->certfile && !cfg->keyfile) || (cfg->keyfile && !cfg->certfile)){
-		fprintf(stderr, "Error: Both certfile and keyfile must be provided if one of them is.\n");
-		return 1;
-	}
-#endif
-#ifdef WITH_TLS_PSK
-	if((cfg->cafile || cfg->capath) && cfg->psk){
-		if(!cfg->quiet) fprintf(stderr, "Error: Only one of --psk or --cafile/--capath may be used at once.\n");
-		return 1;
-	}
-	if(cfg->psk && !cfg->psk_identity){
-		if(!cfg->quiet) fprintf(stderr, "Error: --psk-identity required if --psk used.\n");
-		return 1;
-	}
-#endif
 
 	if(pub_or_sub == CLIENT_SUB){
 		if(cfg->clean_session == false && (cfg->id_prefix || !cfg->id)){
@@ -260,40 +206,6 @@ int client_config_line_proc(struct mosq_config *cfg, int pub_or_sub, int argc, c
 				cfg->bind_address = strdup(argv[i+1]);
 			}
 			i++;
-#ifdef WITH_TLS
-		}else if(!strcmp(argv[i], "--cafile")){
-			if(i==argc-1){
-				fprintf(stderr, "Error: --cafile argument given but no file specified.\n\n");
-				return 1;
-			}else{
-				cfg->cafile = strdup(argv[i+1]);
-			}
-			i++;
-		}else if(!strcmp(argv[i], "--capath")){
-			if(i==argc-1){
-				fprintf(stderr, "Error: --capath argument given but no directory specified.\n\n");
-				return 1;
-			}else{
-				cfg->capath = strdup(argv[i+1]);
-			}
-			i++;
-		}else if(!strcmp(argv[i], "--cert")){
-			if(i==argc-1){
-				fprintf(stderr, "Error: --cert argument given but no file specified.\n\n");
-				return 1;
-			}else{
-				cfg->certfile = strdup(argv[i+1]);
-			}
-			i++;
-		}else if(!strcmp(argv[i], "--ciphers")){
-			if(i==argc-1){
-				fprintf(stderr, "Error: --ciphers argument given but no ciphers specified.\n\n");
-				return 1;
-			}else{
-				cfg->ciphers = strdup(argv[i+1]);
-			}
-			i++;
-#endif
 		}else if(!strcmp(argv[i], "-C")){
 			if(pub_or_sub == CLIENT_PUB){
 				goto unknown_option;
@@ -337,10 +249,6 @@ int client_config_line_proc(struct mosq_config *cfg, int pub_or_sub, int argc, c
 				cfg->host = strdup(argv[i+1]);
 			}
 			i++;
-#ifdef WITH_TLS
-		}else if(!strcmp(argv[i], "--insecure")){
-			cfg->insecure = true;
-#endif
 		}else if(!strcmp(argv[i], "-i") || !strcmp(argv[i], "--id")){
 			if(cfg->id_prefix){
 				fprintf(stderr, "Error: -i and -I argument cannot be used together.\n\n");
@@ -377,16 +285,6 @@ int client_config_line_proc(struct mosq_config *cfg, int pub_or_sub, int argc, c
 				}
 			}
 			i++;
-#ifdef WITH_TLS
-		}else if(!strcmp(argv[i], "--key")){
-			if(i==argc-1){
-				fprintf(stderr, "Error: --key argument given but no file specified.\n\n");
-				return 1;
-			}else{
-				cfg->keyfile = strdup(argv[i+1]);
-			}
-			i++;
-#endif
 		}else if(!strcmp(argv[i], "-l") || !strcmp(argv[i], "--stdin-line")){
 			if(pub_or_sub == CLIENT_SUB){
 				goto unknown_option;
@@ -457,24 +355,6 @@ int client_config_line_proc(struct mosq_config *cfg, int pub_or_sub, int argc, c
 				}
 				i++;
 			}
-#endif
-#ifdef WITH_TLS_PSK
-		}else if(!strcmp(argv[i], "--psk")){
-			if(i==argc-1){
-				fprintf(stderr, "Error: --psk argument given but no key specified.\n\n");
-				return 1;
-			}else{
-				cfg->psk = strdup(argv[i+1]);
-			}
-			i++;
-		}else if(!strcmp(argv[i], "--psk-identity")){
-			if(i==argc-1){
-				fprintf(stderr, "Error: --psk-identity argument given but no identity specified.\n\n");
-				return 1;
-			}else{
-				cfg->psk_identity = strdup(argv[i+1]);
-			}
-			i++;
 #endif
 		}else if(!strcmp(argv[i], "-q") || !strcmp(argv[i], "--qos")){
 			if(i==argc-1){
@@ -548,16 +428,6 @@ int client_config_line_proc(struct mosq_config *cfg, int pub_or_sub, int argc, c
 				cfg->filter_outs[cfg->filter_out_count-1] = strdup(argv[i+1]);
 			}
 			i++;
-#ifdef WITH_TLS
-		}else if(!strcmp(argv[i], "--tls-version")){
-			if(i==argc-1){
-				fprintf(stderr, "Error: --tls-version argument given but no version specified.\n\n");
-				return 1;
-			}else{
-				cfg->tls_version = strdup(argv[i+1]);
-			}
-			i++;
-#endif
 		}else if(!strcmp(argv[i], "-u") || !strcmp(argv[i], "--username")){
 			if(i==argc-1){
 				fprintf(stderr, "Error: -u argument given but no username specified.\n\n");
@@ -658,32 +528,6 @@ int client_opts_set(struct mosquitto *mosq, struct mosq_config *cfg)
 		mosquitto_lib_cleanup();
 		return 1;
 	}
-#ifdef WITH_TLS
-	if((cfg->cafile || cfg->capath)
-			&& mosquitto_tls_set(mosq, cfg->cafile, cfg->capath, cfg->certfile, cfg->keyfile, NULL)){
-
-		if(!cfg->quiet) fprintf(stderr, "Error: Problem setting TLS options.\n");
-		mosquitto_lib_cleanup();
-		return 1;
-	}
-	if(cfg->insecure && mosquitto_tls_insecure_set(mosq, true)){
-		if(!cfg->quiet) fprintf(stderr, "Error: Problem setting TLS insecure option.\n");
-		mosquitto_lib_cleanup();
-		return 1;
-	}
-#  ifdef WITH_TLS_PSK
-	if(cfg->psk && mosquitto_tls_psk_set(mosq, cfg->psk, cfg->psk_identity, NULL)){
-		if(!cfg->quiet) fprintf(stderr, "Error: Problem setting TLS-PSK options.\n");
-		mosquitto_lib_cleanup();
-		return 1;
-	}
-#  endif
-	if(cfg->tls_version && mosquitto_tls_opts_set(mosq, 1, cfg->tls_version, cfg->ciphers)){
-		if(!cfg->quiet) fprintf(stderr, "Error: Problem setting TLS options.\n");
-		mosquitto_lib_cleanup();
-		return 1;
-	}
-#endif
 	mosquitto_max_inflight_messages_set(mosq, cfg->max_inflight);
 #ifdef WITH_SOCKS
 	if(cfg->socks5_host){
@@ -748,11 +592,7 @@ int client_connect(struct mosquitto *mosq, struct mosq_config *cfg)
 	if(rc>0){
 		if(!cfg->quiet){
 			if(rc == MOSQ_ERR_ERRNO){
-#ifndef WIN32
 				strerror_r(errno, err, 1024);
-#else
-				FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, errno, 0, (LPTSTR)&err, 1024, NULL);
-#endif
 				fprintf(stderr, "Error: %s\n", err);
 			}else{
 				fprintf(stderr, "Unable to connect (%d).\n", rc);

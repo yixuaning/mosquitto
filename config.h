@@ -11,14 +11,6 @@
  *
  * Generally for Windows native support.
  * ============================================================ */
-#ifdef WIN32
-#define snprintf sprintf_s
-#  ifndef strcasecmp
-#    define strcasecmp strcmpi
-#  endif
-#define strtok_r strtok_s
-#define strerror_r(e, b, l) strerror_s(b, l, e)
-#endif
 
 
 #define uthash_malloc(sz) _mosquitto_malloc(sz)

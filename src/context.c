@@ -73,9 +73,6 @@ struct mosquitto *mqtt3_context_init(struct mosquitto_db *db, mosq_sock_t sock)
 	context->last_msg = NULL;
 	context->msg_count = 0;
 	context->msg_count12 = 0;
-#ifdef WITH_TLS
-	context->ssl = NULL;
-#endif
 
 	if((int)context->sock >= 0){
 		HASH_ADD(hh_sock, db->contexts_by_sock, sock, sizeof(context->sock), context);
@@ -105,34 +102,6 @@ void mqtt3_context_cleanup(struct mosquitto_db *db, struct mosquitto *context, b
 		_mosquitto_free(context->password);
 		context->password = NULL;
 	}
-#ifdef WITH_BRIDGE
-	if(context->bridge){
-		for(i=0; i<db->bridge_count; i++){
-			if(db->bridges[i] == context){
-				db->bridges[i] = NULL;
-			}
-		}
-		if(context->bridge->local_clientid){
-			_mosquitto_free(context->bridge->local_clientid);
-			context->bridge->local_clientid = NULL;
-		}
-		if(context->bridge->remote_username){
-			context->bridge->remote_username = NULL;
-		}
-		if(context->bridge->remote_password){
-			context->bridge->remote_password = NULL;
-		}
-		if(context->bridge->local_username){
-			context->bridge->local_username = NULL;
-		}
-		if(context->bridge->local_password){
-			context->bridge->local_password = NULL;
-		}
-		if(context->bridge->local_clientid){
-			context->bridge->local_clientid = NULL;
-		}
-	}
-#endif
 	_mosquitto_socket_close(db, context);
 	if((do_free || context->clean_session) && db){
 		mqtt3_subs_clean_session(db, context);

@@ -60,19 +60,6 @@ struct _mqtt3_listener {
 	int client_count;
 	enum mosquitto_protocol protocol;
 	bool use_username_as_clientid;
-#ifdef WITH_TLS
-	char *cafile;
-	char *capath;
-	char *certfile;
-	char *keyfile;
-	char *ciphers;
-	char *psk_hint;
-	bool require_certificate;
-	SSL_CTX *ssl_ctx;
-	char *crlfile;
-	bool use_identity_as_username;
-	char *tls_version;
-#endif
 #ifdef WITH_WEBSOCKETS
 	struct libwebsocket_context *ws_context;
 	char *http_dir;
@@ -120,10 +107,6 @@ struct mqtt3_config {
 #ifdef WITH_WEBSOCKETS
 	int websockets_log_level;
 	bool have_websockets_listener;
-#endif
-#ifdef WITH_BRIDGE
-	struct _mqtt3_bridge *bridges;
-	int bridge_count;
 #endif
 	char *auth_plugin;
 	struct mosquitto_auth_opt *auth_options;
@@ -183,11 +166,6 @@ struct mosquitto_client_msg{
 struct _mosquitto_unpwd{
 	char *username;
 	char *password;
-#ifdef WITH_TLS
-	unsigned int password_len;
-	unsigned int salt_len;
-	unsigned char *salt;
-#endif
 	UT_hash_handle hh;
 };
 
@@ -228,15 +206,9 @@ struct mosquitto_db{
 	struct mosquitto *contexts_by_id;
 	struct mosquitto *contexts_by_sock;
 	struct mosquitto *contexts_for_free;
-#ifdef WITH_BRIDGE
-	struct mosquitto **bridges;
-#endif
 	struct _clientid_index_hash *clientid_index_hash;
 	struct mosquitto_msg_store *msg_store;
 	struct mosquitto_msg_store_load *msg_store_load;
-#ifdef WITH_BRIDGE
-	int bridge_count;
-#endif
 	int msg_store_count;
 	struct mqtt3_config *config;
 	int persistence_changes;
@@ -307,18 +279,6 @@ struct _mqtt3_bridge{
 	bool lazy_reconnect;
 	bool attempt_unsubscribe;
 	bool initial_notification_done;
-#ifdef WITH_TLS
-	char *tls_cafile;
-	char *tls_capath;
-	char *tls_certfile;
-	char *tls_keyfile;
-	bool tls_insecure;
-	char *tls_version;
-#  ifdef REAL_WITH_TLS_PSK
-	char *tls_psk_identity;
-	char *tls_psk;
-#  endif
-#endif
 };
 
 #ifdef WITH_WEBSOCKETS
@@ -442,11 +402,6 @@ int _mosquitto_log_printf(struct mosquitto *mosq, int level, const char *fmt, ..
 /* ============================================================
  * Bridge functions
  * ============================================================ */
-#ifdef WITH_BRIDGE
-int mqtt3_bridge_new(struct mosquitto_db *db, struct _mqtt3_bridge *bridge);
-int mqtt3_bridge_connect(struct mosquitto_db *db, struct mosquitto *context);
-void mqtt3_bridge_packet_cleanup(struct mosquitto *context);
-#endif
 
 /* ============================================================
  * Security related functions
@@ -471,11 +426,6 @@ int mosquitto_psk_key_get_default(struct mosquitto_db *db, const char *hint, con
 /* ============================================================
  * Window service related functions
  * ============================================================ */
-#if defined(WIN32) || defined(__CYGWIN__)
-void service_install(void);
-void service_uninstall(void);
-void service_run(void);
-#endif
 
 /* ============================================================
  * Websockets related functions

@@ -19,15 +19,9 @@ Contributors:
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
-#ifndef WIN32
 #include <sys/select.h>
 #include <sys/time.h>
 #include <unistd.h>
-#else
-#include <winsock2.h>
-#include <windows.h>
-typedef int ssize_t;
-#endif
 
 #include <mosquitto.h>
 #include <mosquitto_internal.h>
@@ -46,7 +40,7 @@ typedef int ssize_t;
 
 #include "config.h"
 
-#if !defined(WIN32) && !defined(__SYMBIAN32__)
+#if !defined(__SYMBIAN32__)
 #define HAVE_PSELECT
 #endif
 
@@ -64,14 +58,10 @@ int mosquitto_lib_version(int *major, int *minor, int *revision)
 
 int mosquitto_lib_init(void)
 {
-#ifdef WIN32
-	srand(GetTickCount());
-#else
 	struct timeval tv;
 
 	gettimeofday(&tv, NULL);
 	srand(tv.tv_sec*1000 + tv.tv_usec/1000);
-#endif
 
 	_mosquitto_net_init();
 
@@ -95,9 +85,7 @@ struct mosquitto *mosquitto_new(const char *id, bool clean_session, void *userda
 		return NULL;
 	}
 
-#ifndef WIN32
 	signal(SIGPIPE, SIG_IGN);
-#endif
 
 	mosq = (struct mosquitto *)_mosquitto_calloc(1, sizeof(struct mosquitto));
 	if(mosq){
@@ -198,12 +186,6 @@ int mosquitto_reinitialise(struct mosquitto *mosq, const char *id, bool clean_se
 	mosq->reconnect_delay_max = 1;
 	mosq->reconnect_exponential_backoff = false;
 	mosq->threaded = false;
-#ifdef WITH_TLS
-	mosq->ssl = NULL;
-	mosq->tls_cert_reqs = SSL_VERIFY_PEER;
-	mosq->tls_insecure = false;
-	mosq->want_write = false;
-#endif
 #ifdef WITH_THREADING
 	pthread_mutex_init(&mosq->callback_mutex, NULL);
 	pthread_mutex_init(&mosq->log_callback_mutex, NULL);
@@ -304,23 +286,6 @@ void _mosquitto_destroy(struct mosquitto *mosq)
 	}
 	_mosquitto_message_cleanup_all(mosq);
 	_mosquitto_will_clear(mosq);
-#ifdef WITH_TLS
-	if(mosq->ssl){
-		SSL_free(mosq->ssl);
-	}
-	if(mosq->ssl_ctx){
-		SSL_CTX_free(mosq->ssl_ctx);
-	}
-	if(mosq->tls_cafile) _mosquitto_free(mosq->tls_cafile);
-	if(mosq->tls_capath) _mosquitto_free(mosq->tls_capath);
-	if(mosq->tls_certfile) _mosquitto_free(mosq->tls_certfile);
-	if(mosq->tls_keyfile) _mosquitto_free(mosq->tls_keyfile);
-	if(mosq->tls_pw_callback) mosq->tls_pw_callback = NULL;
-	if(mosq->tls_version) _mosquitto_free(mosq->tls_version);
-	if(mosq->tls_ciphers) _mosquitto_free(mosq->tls_ciphers);
-	if(mosq->tls_psk) _mosquitto_free(mosq->tls_psk);
-	if(mosq->tls_psk_identity) _mosquitto_free(mosq->tls_psk_identity);
-#endif
 
 	if(mosq->address){
 		_mosquitto_free(mosq->address);
@@ -633,158 +598,20 @@ int mosquitto_unsubscribe(struct mosquitto *mosq, int *mid, const char *sub)
 
 int mosquitto_tls_set(struct mosquitto *mosq, const char *cafile, const char *capath, const char *certfile, const char *keyfile, int (*pw_callback)(char *buf, int size, int rwflag, void *userdata))
 {
-#ifdef WITH_TLS
-	FILE *fptr;
-
-	if(!mosq || (!cafile && !capath) || (certfile && !keyfile) || (!certfile && keyfile)) return MOSQ_ERR_INVAL;
-
-	if(cafile){
-		fptr = _mosquitto_fopen(cafile, "rt");
-		if(fptr){
-			fclose(fptr);
-		}else{
-			return MOSQ_ERR_INVAL;
-		}
-		mosq->tls_cafile = _mosquitto_strdup(cafile);
-
-		if(!mosq->tls_cafile){
-			return MOSQ_ERR_NOMEM;
-		}
-	}else if(mosq->tls_cafile){
-		_mosquitto_free(mosq->tls_cafile);
-		mosq->tls_cafile = NULL;
-	}
-
-	if(capath){
-		mosq->tls_capath = _mosquitto_strdup(capath);
-		if(!mosq->tls_capath){
-			return MOSQ_ERR_NOMEM;
-		}
-	}else if(mosq->tls_capath){
-		_mosquitto_free(mosq->tls_capath);
-		mosq->tls_capath = NULL;
-	}
-
-	if(certfile){
-		fptr = _mosquitto_fopen(certfile, "rt");
-		if(fptr){
-			fclose(fptr);
-		}else{
-			if(mosq->tls_cafile){
-				_mosquitto_free(mosq->tls_cafile);
-				mosq->tls_cafile = NULL;
-			}
-			if(mosq->tls_capath){
-				_mosquitto_free(mosq->tls_capath);
-				mosq->tls_capath = NULL;
-			}
-			return MOSQ_ERR_INVAL;
-		}
-		mosq->tls_certfile = _mosquitto_strdup(certfile);
-		if(!mosq->tls_certfile){
-			return MOSQ_ERR_NOMEM;
-		}
-	}else{
-		if(mosq->tls_certfile) _mosquitto_free(mosq->tls_certfile);
-		mosq->tls_certfile = NULL;
-	}
-
-	if(keyfile){
-		fptr = _mosquitto_fopen(keyfile, "rt");
-		if(fptr){
-			fclose(fptr);
-		}else{
-			if(mosq->tls_cafile){
-				_mosquitto_free(mosq->tls_cafile);
-				mosq->tls_cafile = NULL;
-			}
-			if(mosq->tls_capath){
-				_mosquitto_free(mosq->tls_capath);
-				mosq->tls_capath = NULL;
-			}
-			if(mosq->tls_certfile){
-				_mosquitto_free(mosq->tls_certfile);
-				mosq->tls_certfile = NULL;
-			}
-			return MOSQ_ERR_INVAL;
-		}
-		mosq->tls_keyfile = _mosquitto_strdup(keyfile);
-		if(!mosq->tls_keyfile){
-			return MOSQ_ERR_NOMEM;
-		}
-	}else{
-		if(mosq->tls_keyfile) _mosquitto_free(mosq->tls_keyfile);
-		mosq->tls_keyfile = NULL;
-	}
-
-	mosq->tls_pw_callback = pw_callback;
-
-
-	return MOSQ_ERR_SUCCESS;
-#else
 	return MOSQ_ERR_NOT_SUPPORTED;
 
-#endif
 }
 
 int mosquitto_tls_opts_set(struct mosquitto *mosq, int cert_reqs, const char *tls_version, const char *ciphers)
 {
-#ifdef WITH_TLS
-	if(!mosq) return MOSQ_ERR_INVAL;
-
-	mosq->tls_cert_reqs = cert_reqs;
-	if(tls_version){
-#if OPENSSL_VERSION_NUMBER >= 0x10001000L
-		if(!strcasecmp(tls_version, "tlsv1.2")
-				|| !strcasecmp(tls_version, "tlsv1.1")
-				|| !strcasecmp(tls_version, "tlsv1")){
-
-			mosq->tls_version = _mosquitto_strdup(tls_version);
-			if(!mosq->tls_version) return MOSQ_ERR_NOMEM;
-		}else{
-			return MOSQ_ERR_INVAL;
-		}
-#else
-		if(!strcasecmp(tls_version, "tlsv1")){
-			mosq->tls_version = _mosquitto_strdup(tls_version);
-			if(!mosq->tls_version) return MOSQ_ERR_NOMEM;
-		}else{
-			return MOSQ_ERR_INVAL;
-		}
-#endif
-	}else{
-#if OPENSSL_VERSION_NUMBER >= 0x10001000L
-		mosq->tls_version = _mosquitto_strdup("tlsv1.2");
-#else
-		mosq->tls_version = _mosquitto_strdup("tlsv1");
-#endif
-		if(!mosq->tls_version) return MOSQ_ERR_NOMEM;
-	}
-	if(ciphers){
-		mosq->tls_ciphers = _mosquitto_strdup(ciphers);
-		if(!mosq->tls_ciphers) return MOSQ_ERR_NOMEM;
-	}else{
-		mosq->tls_ciphers = NULL;
-	}
-
-
-	return MOSQ_ERR_SUCCESS;
-#else
 	return MOSQ_ERR_NOT_SUPPORTED;
 
-#endif
 }
 
 
 int mosquitto_tls_insecure_set(struct mosquitto *mosq, bool value)
 {
-#ifdef WITH_TLS
-	if(!mosq) return MOSQ_ERR_INVAL;
-	mosq->tls_insecure = value;
-	return MOSQ_ERR_SUCCESS;
-#else
 	return MOSQ_ERR_NOT_SUPPORTED;
-#endif
 }
 
 
@@ -833,11 +660,9 @@ int mosquitto_loop(struct mosquitto *mosq, int timeout, int max_packets)
 	int maxfd = 0;
 
 	if(!mosq || max_packets < 1) return MOSQ_ERR_INVAL;
-#ifndef WIN32
 	if(mosq->sock >= FD_SETSIZE || mosq->sockpairR >= FD_SETSIZE){
 		return MOSQ_ERR_INVAL;
 	}
-#endif
 
 	FD_ZERO(&readfds);
 	FD_ZERO(&writefds);
@@ -849,20 +674,6 @@ int mosquitto_loop(struct mosquitto *mosq, int timeout, int max_packets)
 		if(mosq->out_packet || mosq->current_out_packet){
 			FD_SET(mosq->sock, &writefds);
 		}
-#ifdef WITH_TLS
-		if(mosq->ssl){
-			if(mosq->want_write){
-				FD_SET(mosq->sock, &writefds);
-				mosq->want_write = false;
-			}else if(mosq->want_connect){
-				/* Remove possible FD_SET from above, we don't want to check
-				 * for writing if we are still connecting, unless want_write is
-				 * definitely set. The presence of outgoing packets does not
-				 * matter yet. */
-				FD_CLR(mosq->sock, &writefds);
-			}
-		}
-#endif
 		pthread_mutex_unlock(&mosq->out_packet_mutex);
 		pthread_mutex_unlock(&mosq->current_out_packet_mutex);
 	}else{
@@ -915,9 +726,6 @@ int mosquitto_loop(struct mosquitto *mosq, int timeout, int max_packets)
 	fdcount = select(maxfd+1, &readfds, &writefds, NULL, &local_timeout);
 #endif
 	if(fdcount == -1){
-#ifdef WIN32
-		errno = WSAGetLastError();
-#endif
 		if(errno == EINTR){
 			return MOSQ_ERR_SUCCESS;
 		}else{
@@ -926,12 +734,6 @@ int mosquitto_loop(struct mosquitto *mosq, int timeout, int max_packets)
 	}else{
 		if(mosq->sock != INVALID_SOCKET){
 			if(FD_ISSET(mosq->sock, &readfds)){
-#ifdef WITH_TLS
-				if(mosq->want_connect){
-					rc = mosquitto__socket_connect_tls(mosq);
-					if(rc) return rc;
-				}else
-#endif
 				{
 					rc = mosquitto_loop_read(mosq, max_packets);
 					if(rc || mosq->sock == INVALID_SOCKET){
@@ -940,24 +742,14 @@ int mosquitto_loop(struct mosquitto *mosq, int timeout, int max_packets)
 				}
 			}
 			if(mosq->sockpairR != INVALID_SOCKET && FD_ISSET(mosq->sockpairR, &readfds)){
-#ifndef WIN32
 				if(read(mosq->sockpairR, &pairbuf, 1) == 0){
 				}
-#else
-				recv(mosq->sockpairR, &pairbuf, 1, 0);
-#endif
 				/* Fake write possible, to stimulate output write even though
 				 * we didn't ask for it, because at that point the publish or
 				 * other command wasn't present. */
 				FD_SET(mosq->sock, &writefds);
 			}
 			if(FD_ISSET(mosq->sock, &writefds)){
-#ifdef WITH_TLS
-				if(mosq->want_connect){
-					rc = mosquitto__socket_connect_tls(mosq);
-					if(rc) return rc;
-				}else
-#endif
 				{
 					rc = mosquitto_loop_write(mosq, max_packets);
 					if(rc || mosq->sock == INVALID_SOCKET){
@@ -1037,11 +829,7 @@ int mosquitto_loop_forever(struct mosquitto *mosq, int timeout, int max_packets)
 					reconnects++;
 				}
 
-#ifdef WIN32
-				Sleep(reconnect_delay*1000);
-#else
 				sleep(reconnect_delay);
-#endif
 
 				pthread_mutex_lock(&mosq->state_mutex);
 				if(mosq->state == mosq_cs_disconnecting){
@@ -1181,10 +969,6 @@ bool mosquitto_want_write(struct mosquitto *mosq)
 {
 	if(mosq->out_packet || mosq->current_out_packet){
 		return true;
-#ifdef WITH_TLS
-	}else if(mosq->ssl && mosq->want_write){
-		return true;
-#endif
 	}else{
 		return false;
 	}

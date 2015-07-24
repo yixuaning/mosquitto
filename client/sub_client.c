@@ -19,13 +19,7 @@ Contributors:
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef WIN32
 #include <unistd.h>
-#else
-#include <process.h>
-#include <winsock2.h>
-#define snprintf sprintf_s
-#endif
 
 #include <mosquitto.h>
 #include "client_shared.h"
@@ -140,13 +134,6 @@ void print_usage(void)
 	printf("                     [-d] [-N] [--quiet] [-v]\n");
 	printf("                     [-u username [-P password]]\n");
 	printf("                     [--will-topic [--will-payload payload] [--will-qos qos] [--will-retain]]\n");
-#ifdef WITH_TLS
-	printf("                     [{--cafile file | --capath dir} [--cert file] [--key file]\n");
-	printf("                      [--ciphers ciphers] [--insecure]]\n");
-#ifdef WITH_TLS_PSK
-	printf("                     [--psk hex-key --psk-identity identity [--ciphers ciphers]]\n");
-#endif
-#endif
 #ifdef WITH_SOCKS
 	printf("                     [--proxy socks-url]\n");
 #endif
@@ -183,25 +170,6 @@ void print_usage(void)
 	printf(" --will-qos : QoS level for the client Will.\n");
 	printf(" --will-retain : if given, make the client Will retained.\n");
 	printf(" --will-topic : the topic on which to publish the client Will.\n");
-#ifdef WITH_TLS
-	printf(" --cafile : path to a file containing trusted CA certificates to enable encrypted\n");
-	printf("            certificate based communication.\n");
-	printf(" --capath : path to a directory containing trusted CA certificates to enable encrypted\n");
-	printf("            communication.\n");
-	printf(" --cert : client certificate for authentication, if required by server.\n");
-	printf(" --key : client private key for authentication, if required by server.\n");
-	printf(" --ciphers : openssl compatible list of TLS ciphers to support.\n");
-	printf(" --tls-version : TLS protocol version, can be one of tlsv1.2 tlsv1.1 or tlsv1.\n");
-	printf("                 Defaults to tlsv1.2 if available.\n");
-	printf(" --insecure : do not check that the server certificate hostname matches the remote\n");
-	printf("              hostname. Using this option means that you cannot be sure that the\n");
-	printf("              remote host is the server you wish to connect to and so is insecure.\n");
-	printf("              Do not use this option in a production environment.\n");
-#ifdef WITH_TLS_PSK
-	printf(" --psk : pre-shared-key in hexadecimal (no leading 0x) to enable TLS-PSK mode.\n");
-	printf(" --psk-identity : client identity string for TLS-PSK mode.\n");
-#endif
-#endif
 #ifdef WITH_SOCKS
 	printf(" --proxy : SOCKS5 proxy URL of the form:\n");
 	printf("           socks5h://[username[:password]@]hostname[:port]\n");

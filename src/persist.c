@@ -18,9 +18,7 @@ Contributors:
 
 #ifdef WITH_PERSISTENCE
 
-#ifndef WIN32
 #include <arpa/inet.h>
-#endif
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -384,13 +382,6 @@ int mqtt3_db_backup(struct mosquitto_db *db, bool shutdown)
 
 	fclose(db_fptr);
 
-#ifdef WIN32
-	if(remove(db->config->persistence_filepath) != 0){
-		if(errno != ENOENT){
-			goto error;
-		}
-	}
-#endif
 	if(rename(outfile, db->config->persistence_filepath) != 0){
 		goto error;
 	}

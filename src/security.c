@@ -35,15 +35,7 @@ typedef int (*FUNC_auth_plugin_psk_key_get)(void *, const char *, const char *, 
 
 void LIB_ERROR(void)
 {
-#ifdef WIN32
-	char *buf;
-	FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_STRING,
-			NULL, GetLastError(), LANG_NEUTRAL, &buf, 0, NULL);
-	_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Load error: %s", buf);
-	LocalFree(buf);
-#else
 	_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Load error: %s", dlerror());
-#endif
 }
 
 int mosquitto_security_module_init(struct mosquitto_db *db)
@@ -225,11 +217,6 @@ int mosquitto_acl_check(struct mosquitto_db *db, struct mosquitto *context, cons
 	if(!db->auth_plugin.lib){
 		return mosquitto_acl_check_default(db, context, topic, access);
 	}else{
-#ifdef WITH_BRIDGE
-		if(context->bridge){
-			username = context->bridge->local_username;
-		}else
-#endif
 		{
 			username = context->username;
 		}

@@ -28,10 +28,6 @@ static int _unpwd_file_parse(struct mosquitto_db *db);
 static int _acl_cleanup(struct mosquitto_db *db, bool reload);
 static int _unpwd_cleanup(struct _mosquitto_unpwd **unpwd, bool reload);
 static int _psk_file_parse(struct mosquitto_db *db);
-#ifdef WITH_TLS
-static int _pw_digest(const char *password, const unsigned char *salt, unsigned int salt_len, unsigned char *hash, unsigned int *hash_len);
-static int _base64_decode(char *in, unsigned char **decoded, unsigned int *decoded_len);
-#endif
 
 int mosquitto_security_init_default(struct mosquitto_db *db, bool reload)
 {
@@ -544,62 +540,12 @@ static int _pwfile_parse(const char *file, struct _mosquitto_unpwd **root)
 static int _unpwd_file_parse(struct mosquitto_db *db)
 {
 	int rc;
-#ifdef WITH_TLS
-	struct _mosquitto_unpwd *u, *tmp;
-	char *token;
-	unsigned char *salt;
-	unsigned int salt_len;
-	unsigned char *password;
-	unsigned int password_len;
-#endif
 
 	if(!db || !db->config) return MOSQ_ERR_INVAL;
 
 	if(!db->config->password_file) return MOSQ_ERR_SUCCESS;
 
 	rc = _pwfile_parse(db->config->password_file, &db->unpwd);
-#ifdef WITH_TLS
-	if(rc) return rc;
-
-	HASH_ITER(hh, db->unpwd, u, tmp){
-		/* Need to decode password into hashed data + salt. */
-		if(u->password){
-			token = strtok(u->password, "$");
-			if(token && !strcmp(token, "6")){
-				token = strtok(NULL, "$");
-				if(token){
-					rc = _base64_decode(token, &salt, &salt_len);
-					if(rc){
-						_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Unable to decode password salt for user %s.", u->username);
-						return MOSQ_ERR_INVAL;
-					}
-					u->salt = salt;
-					u->salt_len = salt_len;
-					token = strtok(NULL, "$");
-					if(token){
-						rc = _base64_decode(token, &password, &password_len);
-						if(rc){
-							_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Unable to decode password for user %s.", u->username);
-							return MOSQ_ERR_INVAL;
-						}
-						_mosquitto_free(u->password);
-						u->password = (char *)password;
-						u->password_len = password_len;
-					}else{
-						_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Invalid password hash for user %s.", u->username);
-						return MOSQ_ERR_INVAL;
-					}
-				}else{
-					_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Invalid password hash for user %s.", u->username);
-					return MOSQ_ERR_INVAL;
-				}
-			}else{
-				_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Invalid password hash for user %s.", u->username);
-				return MOSQ_ERR_INVAL;
-			}
-		}
-	}
-#endif
 	return rc;
 }
 
@@ -633,11 +579,6 @@ static int _psk_file_parse(struct mosquitto_db *db)
 int mosquitto_unpwd_check_default(struct mosquitto_db *db, const char *username, const char *password)
 {
 	struct _mosquitto_unpwd *u, *tmp;
-#ifdef WITH_TLS
-	unsigned char hash[EVP_MAX_MD_SIZE];
-	unsigned int hash_len;
-	int rc;
-#endif
 
 	if(!db) return MOSQ_ERR_INVAL;
 	if(!db->unpwd) return MOSQ_ERR_SUCCESS;
@@ -647,22 +588,9 @@ int mosquitto_unpwd_check_default(struct mosquitto_db *db, const char *username,
 		if(!strcmp(u->username, username)){
 			if(u->password){
 				if(password){
-#ifdef WITH_TLS
-					rc = _pw_digest(password, u->salt, u->salt_len, hash, &hash_len);
-					if(rc == MOSQ_ERR_SUCCESS){
-						if(hash_len == u->password_len && !memcmp(u->password, hash, hash_len)){
-							return MOSQ_ERR_SUCCESS;
-						}else{
-							return MOSQ_ERR_AUTH;
-						}
-					}else{
-						return rc;
-					}
-#else
 					if(!strcmp(u->password, password)){
 						return MOSQ_ERR_SUCCESS;
 					}
-#endif
 				}else{
 					return MOSQ_ERR_AUTH;
 				}
@@ -685,9 +613,6 @@ static int _unpwd_cleanup(struct _mosquitto_unpwd **root, bool reload)
 		HASH_DEL(*root, u);
 		if(u->password) _mosquitto_free(u->password);
 		if(u->username) _mosquitto_free(u->username);
-#ifdef WITH_TLS
-		if(u->salt) _mosquitto_free(u->salt);
-#endif
 		_mosquitto_free(u);
 	}
 
@@ -766,48 +691,3 @@ int mosquitto_psk_key_get_default(struct mosquitto_db *db, const char *hint, con
 	return MOSQ_ERR_AUTH;
 }
 
-#ifdef WITH_TLS
-int _pw_digest(const char *password, const unsigned char *salt, unsigned int salt_len, unsigned char *hash, unsigned int *hash_len)
-{
-	const EVP_MD *digest;
-	EVP_MD_CTX context;
-
-	digest = EVP_get_digestbyname("sha512");
-	if(!digest){
-		// FIXME fprintf(stderr, "Error: Unable to create openssl digest.\n");
-		return 1;
-	}
-
-	EVP_MD_CTX_init(&context);
-	EVP_DigestInit_ex(&context, digest, NULL);
-	EVP_DigestUpdate(&context, password, strlen(password));
-	EVP_DigestUpdate(&context, salt, salt_len);
-	/* hash is assumed to be EVP_MAX_MD_SIZE bytes long. */
-	EVP_DigestFinal_ex(&context, hash, hash_len);
-	EVP_MD_CTX_cleanup(&context);
-
-	return MOSQ_ERR_SUCCESS;
-}
-
-int _base64_decode(char *in, unsigned char **decoded, unsigned int *decoded_len)
-{
-	BIO *bmem, *b64;
-
-	b64 = BIO_new(BIO_f_base64());
-	BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
-	bmem = BIO_new(BIO_s_mem());
-	b64 = BIO_push(b64, bmem);
-	BIO_write(bmem, in, strlen(in));
-
-	if(BIO_flush(bmem) != 1){
-		BIO_free_all(b64);
-		return 1;
-	}
-	*decoded = calloc(strlen(in), 1);
-	*decoded_len =  BIO_read(b64, *decoded, strlen(in));
-	BIO_free_all(b64);
-
-	return 0;
-}
-
-#endif

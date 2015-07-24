@@ -42,10 +42,6 @@ int mqtt3_db_open(struct mqtt3_config *config, struct mosquitto_db *db)
 	db->contexts_by_id = NULL;
 	db->contexts_by_sock = NULL;
 	db->contexts_for_free = NULL;
-#ifdef WITH_BRIDGE
-	db->bridges = NULL;
-	db->bridge_count = 0;
-#endif
 
 	// Initialize the hashtable
 	db->clientid_index_hash = NULL;
@@ -419,14 +415,6 @@ int mqtt3_db_message_insert(struct mosquitto_db *db, struct mosquitto *context, 
 			return MOSQ_ERR_NOMEM;
 		}
 	}
-#ifdef WITH_BRIDGE
-	if(context->bridge && context->bridge->start_type == bst_lazy
-			&& context->sock == INVALID_SOCKET
-			&& context->msg_count >= context->bridge->threshold){
-
-		context->bridge->lazy_reconnect = true;
-	}
-#endif
 
 #ifdef WITH_WEBSOCKETS
 	if(context->wsi && rc == 0){

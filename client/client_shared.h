@@ -58,19 +58,6 @@ struct mosq_config {
 	long will_payloadlen;
 	int will_qos;
 	bool will_retain;
-#ifdef WITH_TLS
-	char *cafile;
-	char *capath;
-	char *certfile;
-	char *keyfile;
-	char *ciphers;
-	bool insecure;
-	char *tls_version;
-#  ifdef WITH_TLS_PSK
-	char *psk;
-	char *psk_identity;
-#  endif
-#endif
 	bool clean_session; /* sub */
 	char **topics; /* sub */
 	int topic_count; /* sub */

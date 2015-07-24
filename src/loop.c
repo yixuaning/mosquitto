@@ -19,21 +19,13 @@ Contributors:
 #include <config.h>
 
 #include <assert.h>
-#ifndef WIN32
 #include <poll.h>
-#else
-#include <process.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#endif
 
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
-#ifndef WIN32
 #  include <sys/socket.h>
-#endif
 #include <time.h>
 
 #ifdef WITH_WEBSOCKETS
@@ -102,25 +94,17 @@ int mosquitto_main_loop(struct mosquitto_db *db, mosq_sock_t *listensock, int li
 	int time_count;
 	int fdcount;
 	struct mosquitto *context, *ctxt_tmp;
-#ifndef WIN32
 	sigset_t sigblock, origsig;
-#endif
 	int i;
 	struct pollfd *pollfds = NULL;
 	int pollfd_count = 0;
 	int pollfd_index;
-#ifdef WITH_BRIDGE
-	mosq_sock_t bridge_sock;
-	int rc;
-#endif
 	int context_count;
 	time_t expiration_check_time = 0;
 	char *id;
 
-#ifndef WIN32
 	sigemptyset(&sigblock);
 	sigaddset(&sigblock, SIGINT);
-#endif
 
 	if(db->config->persistent_client_expiration > 0){
 		expiration_check_time = time(NULL) + 3600;
@@ -135,9 +119,6 @@ int mosquitto_main_loop(struct mosquitto_db *db, mosq_sock_t *listensock, int li
 #endif
 
 		context_count = HASH_CNT(hh_sock, db->contexts_by_sock);
-#ifdef WITH_BRIDGE
-		context_count += db->bridge_count;
-#endif
 
 		if(listensock_count + context_count > pollfd_count || !pollfds){
 			pollfd_count = listensock_count + context_count;
@@ -171,21 +152,6 @@ int mosquitto_main_loop(struct mosquitto_db *db, mosq_sock_t *listensock, int li
 			context->pollfd_index = -1;
 
 			if(context->sock != INVALID_SOCKET){
-#ifdef WITH_BRIDGE
-				if(context->bridge){
-					_mosquitto_check_keepalive(db, context);
-					if(context->bridge->round_robin == false
-							&& context->bridge->cur_address != 0
-							&& now > context->bridge->primary_retry){
-
-						if(_mosquitto_try_connect(context, context->bridge->addresses[0].address, context->bridge->addresses[0].port, &bridge_sock, NULL, false) == MOSQ_ERR_SUCCESS){
-							COMPAT_CLOSE(bridge_sock);
-							_mosquitto_socket_close(db, context);
-							context->bridge->cur_address = context->bridge->address_count-1;
-						}
-					}
-				}
-#endif
 
 				/* Local bridges never time out in this fashion. */
 				if(!(context->keepalive)
@@ -219,66 +185,6 @@ int mosquitto_main_loop(struct mosquitto_db *db, mosq_sock_t *listensock, int li
 			}
 		}
 
-#ifdef WITH_BRIDGE
-		time_count = 0;
-		for(i=0; i<db->bridge_count; i++){
-			if(!db->bridges[i]) continue;
-
-			context = db->bridges[i];
-
-			if(context->sock == INVALID_SOCKET){
-				if(time_count > 0){
-					time_count--;
-				}else{
-					time_count = 1000;
-					now = mosquitto_time();
-				}
-				/* Want to try to restart the bridge connection */
-				if(!context->bridge->restart_t){
-					context->bridge->restart_t = now+context->bridge->restart_timeout;
-					context->bridge->cur_address++;
-					if(context->bridge->cur_address == context->bridge->address_count){
-						context->bridge->cur_address = 0;
-					}
-					if(context->bridge->round_robin == false && context->bridge->cur_address != 0){
-						context->bridge->primary_retry = now + 5;
-					}
-				}else{
-					if(context->bridge->start_type == bst_lazy && context->bridge->lazy_reconnect){
-						rc = mqtt3_bridge_connect(db, context);
-						if(rc){
-							context->bridge->cur_address++;
-							if(context->bridge->cur_address == context->bridge->address_count){
-								context->bridge->cur_address = 0;
-							}
-						}
-					}
-					if(context->bridge->start_type == bst_automatic && now > context->bridge->restart_t){
-						context->bridge->restart_t = 0;
-						rc = mqtt3_bridge_connect(db, context);
-						if(rc == MOSQ_ERR_SUCCESS){
-							pollfds[pollfd_index].fd = context->sock;
-							pollfds[pollfd_index].events = POLLIN;
-							pollfds[pollfd_index].revents = 0;
-							if(context->current_out_packet){
-								pollfds[pollfd_index].events |= POLLOUT;
-							}
-							context->pollfd_index = pollfd_index;
-							pollfd_index++;
-						}else{
-							/* Retry later. */
-							context->bridge->restart_t = now+context->bridge->restart_timeout;
-
-							context->bridge->cur_address++;
-							if(context->bridge->cur_address == context->bridge->address_count){
-								context->bridge->cur_address = 0;
-							}
-						}
-					}
-				}
-			}
-		}
-#endif
 		now_time = time(NULL);
 		if(db->config->persistent_client_expiration > 0 && now_time > expiration_check_time){
 			HASH_ITER(hh_id, db->contexts_by_id, context, ctxt_tmp){
@@ -309,13 +215,9 @@ int mosquitto_main_loop(struct mosquitto_db *db, mosq_sock_t *listensock, int li
 
 		mqtt3_db_message_timeout_check(db, db->config->retry_interval);
 
-#ifndef WIN32
 		sigprocmask(SIG_SETMASK, &sigblock, &origsig);
 		fdcount = poll(pollfds, pollfd_index, 100);
 		sigprocmask(SIG_SETMASK, &origsig, NULL);
-#else
-		fdcount = WSAPoll(pollfds, pollfd_index, 100);
-#endif
 		if(fdcount == -1){
 			loop_handle_errors(db, pollfds);
 		}else{
@@ -416,11 +318,7 @@ void do_disconnect(struct mosquitto_db *db, struct mosquitto *context)
 			}
 		}
 		mqtt3_context_disconnect(db, context);
-#ifdef WITH_BRIDGE
-		if(context->clean_session && !context->bridge){
-#else
 		if(context->clean_session){
-#endif
 			mosquitto__add_context_to_disused(db, context);
 			if(context->id){
 				HASH_DELETE(hh_id, db->contexts_by_id, context);
@@ -462,13 +360,7 @@ static void loop_handle_reads_writes(struct mosquitto_db *db, struct pollfd *pol
 		}
 
 		assert(pollfds[context->pollfd_index].fd == context->sock);
-#ifdef WITH_TLS
-		if(pollfds[context->pollfd_index].revents & POLLOUT ||
-				context->want_write ||
-				(context->ssl && context->state == mosq_cs_new)){
-#else
 		if(pollfds[context->pollfd_index].revents & POLLOUT){
-#endif
 			if(context->state == mosq_cs_connect_pending){
 				len = sizeof(int);
 				if(!getsockopt(context->sock, SOL_SOCKET, SO_ERROR, (char *)&err, &len)){
@@ -492,12 +384,7 @@ static void loop_handle_reads_writes(struct mosquitto_db *db, struct pollfd *pol
 			continue;
 		}
 
-#ifdef WITH_TLS
-		if(pollfds[context->pollfd_index].revents & POLLIN ||
-				(context->ssl && context->state == mosq_cs_new)){
-#else
 		if(pollfds[context->pollfd_index].revents & POLLIN){
-#endif
 			if(_mosquitto_packet_read(db, context)){
 				do_disconnect(db, context);
 				continue;

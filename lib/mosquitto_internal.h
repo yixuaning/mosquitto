@@ -19,15 +19,8 @@ Contributors:
 
 #include <config.h>
 
-#ifdef WIN32
-#  include <winsock2.h>
-#endif
 
-#ifdef WITH_TLS
-#  include <openssl/ssl.h>
-#else
 #  include <time.h>
-#endif
 #include <stdlib.h>
 
 #if defined(WITH_THREADING) && !defined(WITH_BROKER)
@@ -40,18 +33,7 @@ Contributors:
 #  include <ares.h>
 #endif
 
-#ifdef WIN32
-#	if _MSC_VER < 1600
-		typedef unsigned char uint8_t;
-		typedef unsigned short uint16_t;
-		typedef unsigned int uint32_t;
-		typedef unsigned long long uint64_t;
-#	else
-#		include <stdint.h>
-#	endif
-#else
 #	include <stdint.h>
-#endif
 
 #include "mosquitto.h"
 #include "time_mosq.h"
@@ -60,11 +42,7 @@ Contributors:
 struct mosquitto_client_msg;
 #endif
 
-#ifdef WIN32
-typedef SOCKET mosq_sock_t;
-#else
 typedef int mosq_sock_t;
-#endif
 
 enum mosquitto_msg_direction {
 	mosq_md_in = 0,
@@ -161,21 +139,6 @@ struct mosquitto {
 	struct _mosquitto_packet *current_out_packet;
 	struct _mosquitto_packet *out_packet;
 	struct mosquitto_message *will;
-#ifdef WITH_TLS
-	SSL *ssl;
-	SSL_CTX *ssl_ctx;
-	char *tls_cafile;
-	char *tls_capath;
-	char *tls_certfile;
-	char *tls_keyfile;
-	int (*tls_pw_callback)(char *buf, int size, int rwflag, void *userdata);
-	char *tls_version;
-	char *tls_ciphers;
-	char *tls_psk;
-	char *tls_psk_identity;
-	int tls_cert_reqs;
-	bool tls_insecure;
-#endif
 	bool want_write;
 	bool want_connect;
 #if defined(WITH_THREADING) && !defined(WITH_BROKER)

@@ -94,11 +94,6 @@ int mqtt3_handle_connect(struct mosquitto_db *db, struct mosquitto *context)
 	int slen;
 	struct _mosquitto_subleaf *leaf;
 	int i;
-#ifdef WITH_TLS
-	X509 *client_cert = NULL;
-	X509_NAME *name;
-	X509_NAME_ENTRY *name_entry;
-#endif
 
 #ifdef WITH_SYS_TREE
 	g_connection_count++;
@@ -311,55 +306,6 @@ int mqtt3_handle_connect(struct mosquitto_db *db, struct mosquitto *context)
 		}
 	}
 
-#ifdef WITH_TLS
-	if(context->listener && context->listener->ssl_ctx && context->listener->use_identity_as_username){
-		if(!context->ssl){
-			_mosquitto_send_connack(context, 0, CONNACK_REFUSED_BAD_USERNAME_PASSWORD);
-			rc = 1;
-			goto handle_connect_error;
-		}
-#ifdef REAL_WITH_TLS_PSK
-		if(context->listener->psk_hint){
-			/* Client should have provided an identity to get this far. */
-			if(!context->username){
-				_mosquitto_send_connack(context, 0, CONNACK_REFUSED_BAD_USERNAME_PASSWORD);
-				rc = 1;
-				goto handle_connect_error;
-			}
-		}else{
-#endif /* REAL_WITH_TLS_PSK */
-			client_cert = SSL_get_peer_certificate(context->ssl);
-			if(!client_cert){
-				_mosquitto_send_connack(context, 0, CONNACK_REFUSED_BAD_USERNAME_PASSWORD);
-				rc = 1;
-				goto handle_connect_error;
-			}
-			name = X509_get_subject_name(client_cert);
-			if(!name){
-				_mosquitto_send_connack(context, 0, CONNACK_REFUSED_BAD_USERNAME_PASSWORD);
-				rc = 1;
-				goto handle_connect_error;
-			}
-
-			i = X509_NAME_get_index_by_NID(name, NID_commonName, -1);
-			if(i == -1){
-				_mosquitto_send_connack(context, 0, CONNACK_REFUSED_BAD_USERNAME_PASSWORD);
-				rc = 1;
-				goto handle_connect_error;
-			}
-			name_entry = X509_NAME_get_entry(name, i);
-			context->username = _mosquitto_strdup((char *)ASN1_STRING_data(name_entry->value));
-			if(!context->username){
-				rc = 1;
-				goto handle_connect_error;
-			}
-			X509_free(client_cert);
-			client_cert = NULL;
-#ifdef REAL_WITH_TLS_PSK
-		}
-#endif /* REAL_WITH_TLS_PSK */
-	}else{
-#endif /* WITH_TLS */
 		if(username_flag){
 			rc = mosquitto_unpwd_check(db, username, password);
 			switch(rc){
@@ -388,9 +334,6 @@ int mqtt3_handle_connect(struct mosquitto_db *db, struct mosquitto *context)
 			rc = 1;
 			goto handle_connect_error;
 		}
-#ifdef WITH_TLS
-	}
-#endif
 
 	if(context->listener && context->listener->use_username_as_clientid){
 		if(context->username){
@@ -563,9 +506,6 @@ handle_connect_error:
 	if(will_payload) _mosquitto_free(will_payload);
 	if(will_topic) _mosquitto_free(will_topic);
 	if(will_struct) _mosquitto_free(will_struct);
-#ifdef WITH_TLS
-	if(client_cert) X509_free(client_cert);
-#endif
 	/* We return an error here which means the client is freed later on. */
 	return rc;
 }

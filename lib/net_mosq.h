@@ -16,12 +16,7 @@ Contributors:
 #ifndef _NET_MOSQ_H_
 #define _NET_MOSQ_H_
 
-#ifndef WIN32
 #include <unistd.h>
-#else
-#include <winsock2.h>
-typedef int ssize_t;
-#endif
 
 #include <mosquitto_internal.h>
 #include <mosquitto.h>
@@ -30,15 +25,9 @@ typedef int ssize_t;
 struct mosquitto_db;
 #endif
 
-#ifdef WIN32
-#  define COMPAT_CLOSE(a) closesocket(a)
-#  define COMPAT_ECONNRESET WSAECONNRESET
-#  define COMPAT_EWOULDBLOCK WSAEWOULDBLOCK
-#else
 #  define COMPAT_CLOSE(a) close(a)
 #  define COMPAT_ECONNRESET ECONNRESET
 #  define COMPAT_EWOULDBLOCK EWOULDBLOCK
-#endif
 
 /* For when not using winsock libraries. */
 #ifndef INVALID_SOCKET
@@ -84,9 +73,5 @@ int _mosquitto_packet_read(struct mosquitto_db *db, struct mosquitto *mosq);
 int _mosquitto_packet_read(struct mosquitto *mosq);
 #endif
 
-#ifdef WITH_TLS
-int _mosquitto_socket_apply_tls(struct mosquitto *mosq);
-int mosquitto__socket_connect_tls(struct mosquitto *mosq);
-#endif
 
 #endif
