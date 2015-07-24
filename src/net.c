@@ -119,56 +119,6 @@ int mqtt3_socket_accept(struct mosquitto_db *db, mosq_sock_t listensock)
 }
 
 
-#ifdef REAL_WITH_TLS_PSK
-static unsigned int psk_server_callback(SSL *ssl, const char *identity, unsigned char *psk, unsigned int max_psk_len)
-{
-	struct mosquitto_db *db;
-	struct mosquitto *context;
-	struct _mqtt3_listener *listener;
-	char *psk_key = NULL;
-	int len;
-	const char *psk_hint;
-
-	if(!identity) return 0;
-
-	db = _mosquitto_get_db();
-
-	context = SSL_get_ex_data(ssl, tls_ex_index_context);
-	if(!context) return 0;
-
-	listener = SSL_get_ex_data(ssl, tls_ex_index_listener);
-	if(!listener) return 0;
-
-	psk_hint = listener->psk_hint;
-
-	/* The hex to BN conversion results in the length halving, so we can pass
-	 * max_psk_len*2 as the max hex key here. */
-	psk_key = _mosquitto_calloc(1, max_psk_len*2 + 1);
-	if(!psk_key) return 0;
-
-	if(mosquitto_psk_key_get(db, psk_hint, identity, psk_key, max_psk_len*2) != MOSQ_ERR_SUCCESS){
-		_mosquitto_free(psk_key);
-		return 0;
-	}
-
-	len = _mosquitto_hex2bin(psk_key, psk, max_psk_len);
-	if (len < 0){
-		_mosquitto_free(psk_key);
-		return 0;
-	}
-
-	if(listener->use_identity_as_username){
-		context->username = _mosquitto_strdup(identity);
-		if(!context->username){
-			_mosquitto_free(psk_key);
-			return 0;
-		}
-	}
-
-	_mosquitto_free(psk_key);
-	return len;
-}
-#endif
 
 
 /* Creates a socket and listens on port 'port'.
